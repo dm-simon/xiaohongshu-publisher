@@ -1,0 +1,4 @@
+interface:
+  display_name: "Xiaohongshu Publisher"
+  short_description: "Draft and publish Xiaohongshu image notes on macOS"
+  default_prompt: "Use $xiaohongshu-publisher to write, render, and publish a Xiaohongshu image note for this topic."

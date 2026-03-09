@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Codex Xiaohongshu Uploader",
+  "version": "0.1.0",
+  "description": "Bridge extension for Codex to upload Xiaohongshu image-note files via Chrome debugger.",
+  "permissions": [
+    "debugger",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://creator.xiaohongshu.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://creator.xiaohongshu.com/*"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "page-bridge.js"
+      ],
+      "matches": [
+        "https://creator.xiaohongshu.com/*"
+      ]
+    }
+  ]
+}
