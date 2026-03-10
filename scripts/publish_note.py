@@ -42,12 +42,7 @@ def collect_images(package: Dict, image_dir: Path = None) -> List[str]:
 
 
 def build_body_text(package: Dict) -> str:
-    body = package.get("body", "").strip()
-    hashtags = package.get("hashtags") or []
-    tag_line = " ".join(tag if str(tag).startswith("#") else f"#{tag}" for tag in hashtags)
-    if body and tag_line:
-        return f"{body}\n\n{tag_line}"
-    return body or tag_line
+    return package.get("body", "").strip()
 
 
 def js_string(value) -> str:
@@ -267,6 +262,106 @@ def build_fill_script(title: str, body: str) -> str:
 """.strip()
 
 
+def build_insert_hashtags_script(hashtags: List[str]) -> str:
+    return f"""
+(() => {{
+  try {{
+    const tags = {js_string(hashtags)}
+      .map((tag) => String(tag || '').trim().replace(/^#/, ''))
+      .filter(Boolean);
+    if (!tags.length) {{
+      return JSON.stringify({{ hashtagsOk: true, inserted: 0, skipped: 0 }});
+    }}
+
+    const queryAll = (selector) => Array.from(document.querySelectorAll(selector));
+    const cleanText = (el) => (el?.innerText || el?.textContent || '').replace(/\\s+/g, '');
+    const textIncludes = (el, terms) => terms.some((term) => cleanText(el).includes(term));
+
+    const bodyTarget =
+      queryAll('[contenteditable="true"]').find((el) => !textIncludes(el, ['标题'])) ||
+      queryAll('textarea').find((el) => !textIncludes(el.parentElement || el, ['标题']));
+    if (!bodyTarget) {{
+      return JSON.stringify({{ hashtagsOk: false, error: 'body target not found' }});
+    }}
+    const insertText = (text) => {{
+      if (!text) return;
+      if (bodyTarget.getAttribute('contenteditable') === 'true') {{
+        bodyTarget.focus();
+        document.execCommand('insertText', false, text);
+        bodyTarget.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: text }}));
+      }} else {{
+        bodyTarget.value = (bodyTarget.value || '') + text;
+        bodyTarget.dispatchEvent(new Event('input', {{ bubbles: true }}));
+        bodyTarget.dispatchEvent(new Event('change', {{ bubbles: true }}));
+      }}
+    }};
+    const insertSpace = () => {{
+      if (bodyTarget.getAttribute('contenteditable') === 'true') {{
+        bodyTarget.focus();
+        const down = new KeyboardEvent('keydown', {{ key: ' ', code: 'Space', keyCode: 32, which: 32, bubbles: true }});
+        const up = new KeyboardEvent('keyup', {{ key: ' ', code: 'Space', keyCode: 32, which: 32, bubbles: true }});
+        bodyTarget.dispatchEvent(down);
+        document.execCommand('insertText', false, ' ');
+        bodyTarget.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: ' ' }}));
+        bodyTarget.dispatchEvent(up);
+      }} else {{
+        bodyTarget.value = (bodyTarget.value || '') + ' ';
+        bodyTarget.dispatchEvent(new Event('input', {{ bubbles: true }}));
+        bodyTarget.dispatchEvent(new Event('change', {{ bubbles: true }}));
+      }}
+    }};
+    const clickAfterLastTag = () => {{
+      if (bodyTarget.getAttribute('contenteditable') === 'true') {{
+        bodyTarget.focus();
+        const range = document.createRange();
+        range.selectNodeContents(bodyTarget);
+        range.collapse(false);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        const rect = bodyTarget.getBoundingClientRect();
+        bodyTarget.dispatchEvent(new MouseEvent('click', {{
+          bubbles: true,
+          clientX: Math.max(0, rect.right - 5),
+          clientY: Math.max(0, rect.bottom - 5)
+        }}));
+      }} else {{
+        const len = (bodyTarget.value || '').length;
+        bodyTarget.focus();
+        if (bodyTarget.setSelectionRange) {{
+          bodyTarget.setSelectionRange(len, len);
+        }}
+        bodyTarget.dispatchEvent(new MouseEvent('click', {{ bubbles: true }}));
+      }}
+    }};
+
+    let delay = 0;
+    const schedule = (fn, ms) => {{
+      delay += ms;
+      setTimeout(fn, delay);
+    }};
+
+    schedule(() => clickAfterLastTag(), 0);
+    schedule(() => insertText('\\n'), 500);
+    schedule(() => insertText('\\n'), 0);
+    for (let i = 0; i < tags.length; i += 1) {{
+      if (i > 0) schedule(() => insertText(' '), 0);
+      schedule(() => insertText(`#${{tags[i]}}`), 0);
+      schedule(() => clickAfterLastTag(), 1000);
+      schedule(() => insertSpace(), 1000);
+    }}
+    schedule(() => clickAfterLastTag(), 200);
+    schedule(() => insertSpace(), 0);
+
+    return JSON.stringify({{ hashtagsOk: true, inserted: tags.length, skipped: 0, scheduled: true, totalDelayMs: delay }});
+
+  }} catch (error) {{
+    return JSON.stringify({{ hashtagsOk: false, error: String(error && error.message || error) }});
+  }}
+}})();
+""".strip()
+
+
 def build_action_script(action: str) -> str:
     return f"""
 (() => {{
@@ -373,7 +468,7 @@ def upload_with_extension(files: List[str], selectors: List[str], timeout_second
     raise SystemExit("Timed out waiting for the Chrome extension to upload images.")
 
 
-def publish(package_path: Path, image_dir: Path, mode: str, url: str, wait_seconds: float) -> None:
+def publish(package_path: Path, image_dir: Path, mode: str, url: str, wait_seconds: float, skip_action: bool) -> None:
     package = load_package(package_path)
     images = collect_images(package, image_dir)
     if not images:
@@ -393,10 +488,12 @@ def publish(package_path: Path, image_dir: Path, mode: str, url: str, wait_secon
     time.sleep(4.0)
     title = package.get("title", "").strip()
     body = build_body_text(package)
+    hashtags = package.get("hashtags") or []
     action_label = "发布" if mode == "publish" else "保存草稿"
     fill_payload = parse_json_output(execute_js(build_fill_script(title, body)), "filling title/body")
-    time.sleep(1.0)
-    action_payload = parse_json_output(execute_js(build_action_script(action_label)), "clicking publish action")
+    hashtag_payload = parse_json_output(execute_js(build_insert_hashtags_script(hashtags)), "inserting hashtags")
+    time.sleep((hashtag_payload.get("totalDelayMs") or 0) / 1000.0 + 1.0)
+    action_payload = {"actionOk": False, "skipped": True} if skip_action else parse_json_output(execute_js(build_action_script(action_label)), "clicking publish action")
 
     print(json.dumps({
         "package": str(package_path),
@@ -406,6 +503,7 @@ def publish(package_path: Path, image_dir: Path, mode: str, url: str, wait_secon
         "upload_prepare": prepare_payload,
         "upload_result": upload_payload,
         "fill_result": fill_payload,
+        "hashtag_result": hashtag_payload,
         "action_result": action_payload,
     }, ensure_ascii=False, indent=2))
 
@@ -415,6 +513,7 @@ def main() -> None:
     parser.add_argument("package", help="Path to post.json")
     parser.add_argument("--image-dir", default=None, help="Directory containing rendered .png files")
     parser.add_argument("--mode", choices=["draft", "publish"], default="draft", help="Save draft or publish live")
+    parser.add_argument("--skip-action", action="store_true", help="Fill content but skip clicking publish/draft action")
     parser.add_argument("--url", default=DEFAULT_URL, help="Creator platform publish URL")
     parser.add_argument("--wait-seconds", type=float, default=8.0, help="Initial page-load wait before switching to image-note mode")
     args = parser.parse_args()
@@ -423,7 +522,7 @@ def main() -> None:
     image_dir = Path(args.image_dir).expanduser().resolve() if args.image_dir else None
 
     try:
-        publish(package_path, image_dir, args.mode, args.url, args.wait_seconds)
+        publish(package_path, image_dir, args.mode, args.url, args.wait_seconds, args.skip_action)
     except SystemExit:
         raise
     except Exception as exc:
