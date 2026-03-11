@@ -44,6 +44,7 @@ Write the note in Xiaohongshu style:
 - Short paragraphs and obvious scannability.
 - Practical and specific advice over generic filler.
 - Natural hashtags at the end, usually 5-10.
+- Keep the title length at 20 characters or fewer.
 - Avoid exaggerated claims, medical/financial promises, or fake personal results.
 
 Create a JSON package before rendering or publishing. Save it under a working directory such as `./xhs-output/<topic-slug>/post.json`.
