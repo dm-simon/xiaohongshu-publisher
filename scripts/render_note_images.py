@@ -123,7 +123,6 @@ def make_cover(package: Dict, out_path: Path) -> None:
     draw.text((140, 1110), "这篇内容会讲：", font=pick_font(42, bold=True), fill="#A14E2B")
     draw_paragraph(draw, preview or "核心观点、步骤拆解、落地建议", (140, 1180), pick_font(40), 900, "#302923", 10)
 
-    draw.rounded_rectangle((870, 1360, 1090, 1450), radius=30, fill="#1B1B1B")
     image.save(out_path)
 
 
