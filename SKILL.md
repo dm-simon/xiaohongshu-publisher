@@ -11,10 +11,11 @@ Default to image-note workflow. Do not assume video posting, scheduling, analyti
 
 ## Workflow
 
-1. Turn the user's request into a publishable package.
-2. Render images with `scripts/render_note_images.py`.
-3. Load the bundled Chrome extension once, then publish or save draft with `scripts/publish_note.py`.
-4. Report output paths and any manual blockers.
+1. Verify claims with reliable sources (official pages or reputable media).
+2. Turn the user's request into a publishable package.
+3. Render images with `scripts/render_note_images.py`.
+4. Load the bundled Chrome extension once, then publish or save draft with `scripts/publish_note.py`.
+5. Report output paths and any manual blockers.
 
 ## Setup Checklist
 
@@ -38,14 +39,24 @@ The bridge checker should report:
 
 ## Build The Content Package
 
-Write the note in Xiaohongshu style:
+Write the note in Xiaohongshu style (tech-event friendly):
 
-- Strong opening hook in the first line.
-- Short paragraphs and obvious scannability.
-- Practical and specific advice over generic filler.
-- Natural hashtags at the end, usually 5-10.
-- Keep the title length at 20 characters or fewer.
+- Title uses conflict/reversal framing plus core keywords, add 1 emoji for emotion.
+- Opening hook in the first line, spoken tone (e.g. "谁懂啊家人们", "太绝了", "小白").
+- Rhythm: hook -> quick basic explainer for newbies -> full event arc (cause, conflict, turn, result) -> value takeaway -> closing prompt.
+- Emotion + facts: add short reactions at key nodes, but keep concrete details.
+- Short paragraphs, frequent line breaks, avoid dense walls of text.
+- Hashtags at the end, usually 5-8, include core keywords + traffic phrases.
+- Title can be longer if needed, prefer 24-36 characters over hard truncation.
 - Avoid exaggerated claims, medical/financial promises, or fake personal results.
+
+When the user provides full copy, preserve their wording and paragraph breaks. Do not compress or "summarize" unless explicitly asked.
+
+Verification rules:
+- If a claim cannot be verified from an official page or reputable media, label it as "待确认" and avoid stating it as fact.
+- Prefer primary sources (official announcements, GitHub Sponsors pages, verified social posts).
+- If only a single source exists, note it briefly.
+ - Never include process notes, verification caveats, or user requests inside the published body. Keep verification notes outside the content package or omit unverified claims entirely.
 
 Create a JSON package before rendering or publishing. Save it under a working directory such as `./xhs-output/<topic-slug>/post.json`.
 
