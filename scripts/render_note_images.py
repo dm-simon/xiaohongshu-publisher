@@ -5,6 +5,7 @@ import json
 import math
 from pathlib import Path
 from typing import Dict, List, Tuple
+import re
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -12,6 +13,31 @@ from PIL import Image, ImageDraw, ImageFont
 CANVAS = (1242, 1660)
 MARGIN_X = 96
 TOP_Y = 110
+
+EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001F300-\U0001F5FF"
+    "\U0001F600-\U0001F64F"
+    "\U0001F680-\U0001F6FF"
+    "\U0001F700-\U0001F77F"
+    "\U0001F780-\U0001F7FF"
+    "\U0001F800-\U0001F8FF"
+    "\U0001F900-\U0001F9FF"
+    "\U0001FA00-\U0001FAFF"
+    "\U00002700-\U000027BF"
+    "\U00002600-\U000026FF"
+    "\U0000200D"
+    "\U0000FE0F"
+    "]+",
+    flags=re.UNICODE,
+)
+
+
+def sanitize_text(text: str) -> str:
+    if not text:
+        return ""
+    return EMOJI_PATTERN.sub("", text)
+
 
 
 def load_package(path: Path) -> Dict:
@@ -85,80 +111,88 @@ def draw_paragraph(
 
 
 def make_cover(package: Dict, out_path: Path) -> None:
-    image = Image.new("RGB", CANVAS, "#F6F0E8")
+    image = Image.new("RGB", CANVAS, "#FFF4E8")
     draw = ImageDraw.Draw(image)
 
-    draw.rounded_rectangle((70, 70, 1172, 1590), radius=56, fill="#FFFDF8")
-    draw.rounded_rectangle((780, 90, 1120, 230), radius=36, fill="#D85C3A")
-    draw.text((835, 132), "小红书", font=pick_font(54, bold=True), fill="#FFF8EF")
+    draw.rounded_rectangle((60, 80, 1182, 1580), radius=60, fill="#FFFFFF")
 
-    title = package.get("cover", {}).get("title") or package.get("title") or package.get("topic") or "小红书笔记"
-    subtitle = package.get("cover", {}).get("subtitle") or "把复杂内容讲清楚"
+    title = sanitize_text(
+        package.get("cover", {}).get("title") or package.get("title") or package.get("topic") or "小红书笔记"
+    )
+    subtitle = sanitize_text(package.get("cover", {}).get("subtitle") or "把复杂内容讲清楚")
 
-    accent_y = 330
-    draw.rounded_rectangle((MARGIN_X, accent_y, 1090, accent_y + 28), radius=14, fill="#F2C14E")
+    accent = "#FF5A3D"
+    draw.rounded_rectangle((100, 120, 1142, 520), radius=48, fill=accent)
+    title_font = pick_font(86, bold=True)
+    y = 170
+    for line in wrap_text(draw, title, title_font, 900):
+        draw.text((130, y), line, font=title_font, fill="#FFFFFF")
+        bbox = draw.textbbox((130, y), line, font=title_font)
+        y = bbox[3] + 20
 
-    title_font = pick_font(96, bold=True)
-    subtitle_font = pick_font(46)
-    y = 420
-    for line in wrap_text(draw, title, title_font, 920):
-        draw.text((MARGIN_X, y), line, font=title_font, fill="#1B1B1B")
-        bbox = draw.textbbox((MARGIN_X, y), line, font=title_font)
-        y = bbox[3] + 22
-
-    y += 18
-    y = draw_paragraph(draw, subtitle, (MARGIN_X, y), subtitle_font, 840, "#5C5248", 12)
-
-    card_top = 1040
-    card = (MARGIN_X, card_top, 1120, 1450)
-    draw.rounded_rectangle(card, radius=42, fill="#FFF2DD")
+    subtitle_font = pick_font(40, bold=True)
+    sub_w = draw.textbbox((0, 0), subtitle, font=subtitle_font)[2]
+    sub_x = 130
+    draw.rounded_rectangle((sub_x, y + 10, sub_x + sub_w + 48, y + 74), radius=28, fill="#1B1B1B")
+    draw.text((sub_x + 24, y + 24), subtitle, font=subtitle_font, fill="#FFFFFF")
 
     body = package.get("body", "")
-    preview_lines = []
+    highlights = []
     for para in [p.strip() for p in body.split("\n") if p.strip()]:
-        preview_lines.append(para)
-        if len(preview_lines) == 3:
+        highlights.append(sanitize_text(para))
+        if len(highlights) == 3:
             break
-    preview = " / ".join(preview_lines)[:120]
-    draw.text((140, 1110), "这篇内容会讲：", font=pick_font(42, bold=True), fill="#A14E2B")
-    draw_paragraph(draw, preview or "核心观点、步骤拆解、落地建议", (140, 1180), pick_font(40), 900, "#302923", 10)
+
+    panel_top = 760
+    draw.rounded_rectangle((110, panel_top, 1132, 1460), radius=48, fill="#FFF1E6")
+    draw.text((150, panel_top + 40), "看点速读", font=pick_font(44, bold=True), fill="#A33A2B")
+    bullet_font = pick_font(38)
+    bullet_y = panel_top + 120
+    max_y = 1400
+    for item in highlights or ["核心观点更清晰", "争议与转折更明确", "结论更好记"]:
+        next_y = draw_paragraph(draw, f"● {item}", (150, bullet_y), bullet_font, 880, "#2A2522", 16)
+        if next_y > max_y:
+            break
+        bullet_y = next_y + 8
 
     image.save(out_path)
 
 
 def make_page(page: Dict, index: int, total: int, out_path: Path) -> None:
     palette = [
-        ("#FCFBF7", "#2A2522", "#C95F47", "#F6E7D7"),
-        ("#F8F3EC", "#202123", "#3B7A78", "#DCEEEB"),
-        ("#F7F7FA", "#1D2330", "#D9813A", "#F8E5D2"),
+        ("#FFF7F0", "#1E1C1A", "#FF5A3D", "#FFE3D4"),
+        ("#F4F9FB", "#1E1F22", "#2E7D6B", "#DFF2EE"),
+        ("#FFF6EE", "#1B1B1B", "#E58A3A", "#FFE6D3"),
     ]
     bg, fg, accent, panel = palette[(index - 1) % len(palette)]
     image = Image.new("RGB", CANVAS, bg)
     draw = ImageDraw.Draw(image)
 
-    draw.rounded_rectangle((80, 80, 1160, 1580), radius=52, fill="#FFFFFF")
-    draw.rounded_rectangle((100, 102, 330, 190), radius=28, fill=accent)
-    draw.text((145, 126), f"第 {index} 页", font=pick_font(38, bold=True), fill="#FFFFFF")
-    draw.text((1005, 128), f"{index}/{total}", font=pick_font(34), fill="#6C6C72")
+    draw.rounded_rectangle((70, 80, 1172, 1580), radius=56, fill="#FFFFFF")
+    draw.rounded_rectangle((90, 110, 310, 198), radius=28, fill=accent)
+    draw.text((125, 134), f"第 {index} 页", font=pick_font(36, bold=True), fill="#FFFFFF")
+    draw.text((1005, 132), f"{index}/{total}", font=pick_font(32), fill="#6C6C72")
 
-    heading = page.get("heading") or f"重点 {index}"
-    draw_paragraph(draw, heading, (110, 280), pick_font(72, bold=True), 930, fg, 18)
+    heading = sanitize_text(page.get("heading") or f"重点 {index}")
+    draw.rounded_rectangle((90, 250, 1150, 430), radius=42, fill=panel)
+    draw_paragraph(draw, heading, (130, 290), pick_font(58, bold=True), 920, fg, 18)
 
-    draw.rounded_rectangle((100, 520, 1140, 1380), radius=40, fill=panel)
-    bullet_font = pick_font(46)
-    bullet_y = 620
+    draw.rounded_rectangle((90, 480, 1150, 1400), radius=44, fill="#F9F7F4")
+    draw.rounded_rectangle((110, 520, 130, 1360), radius=10, fill=accent)
+    bullet_font = pick_font(44)
+    bullet_y = 560
     for bullet in page.get("bullets", [])[:6]:
-        text = f"• {bullet}"
-        bullet_y = draw_paragraph(draw, text, (150, bullet_y), bullet_font, 860, fg, 12)
-        bullet_y += 18
+        text = f"● {sanitize_text(str(bullet))}"
+        bullet_y = draw_paragraph(draw, text, (170, bullet_y), bullet_font, 860, fg, 16)
+        bullet_y += 12
 
-    footer = page.get("footer") or ""
+    footer = sanitize_text(page.get("footer") or "")
     if footer:
-        draw.rounded_rectangle((120, 1430, 1120, 1510), radius=24, fill=accent)
-        footer_font = pick_font(34, bold=True)
+        draw.rounded_rectangle((160, 1440, 1080, 1515), radius=30, fill=accent)
+        footer_font = pick_font(32, bold=True)
         footer_width = draw.textbbox((0, 0), footer, font=footer_font)[2]
-        footer_x = max(150, math.floor((CANVAS[0] - footer_width) / 2))
-        draw.text((footer_x, 1453), footer, font=footer_font, fill="#FFFFFF")
+        footer_x = max(180, math.floor((CANVAS[0] - footer_width) / 2))
+        draw.text((footer_x, 1462), footer, font=footer_font, fill="#FFFFFF")
 
     image.save(out_path)
 
